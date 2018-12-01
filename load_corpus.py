@@ -8,12 +8,14 @@ def load_train_data_and_create_features(path):
     tags = []
     features = []
     for idx, line in enumerate(content):
+        words.extend(['*', '*'])
+        tags.extend(['*', '*'])
         for word_tag in line.split():
             word, tag = word_tag.split('_')
             words.append(word)
             tags.append(tag)
             #if word exists append tag to wotds list, else create a list and append the tag
-            word_possible_labels.setdefault(word, []).append(tag)
+            word_possible_labels.setdefault(word, []).extend(tag)
         words.append('STOP')
         tags.append('STOP')
 
