@@ -5,6 +5,9 @@ class Features:
         self.f100 = self.create_word_tag_pairs()
         self.f101 = self.create_suffixes()
         self.f102 = self.create_prefixes()
+        self.f103 = self.create_three_tags()
+        self.f104 = self.create_two_tags()
+        self.f105 = tags_set
 
     def create_word_tag_pairs(self):
         word_tag_pairs = set()
@@ -30,6 +33,23 @@ class Features:
             for size in prefixes_sizes:
                 prefixes.add(word[-size:])
         return prefixes
+
+    def create_three_tags(self):
+        three_tags = set()
+        for tag1 in self.tags_set:
+            for tag2 in self.tags_set:
+                for tag3 in self.tags_set:
+                    three_tags.add((tag1,tag2,tag3))
+        return three_tags
+
+    def create_two_tags(self):
+        two_tags = set()
+        for tag1 in self.tags_set:
+            for tag2 in self.tags_set:
+                two_tags.add((tag1,tag2))
+        return two_tags
+
+
 
 
 
