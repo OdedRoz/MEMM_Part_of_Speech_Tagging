@@ -5,6 +5,7 @@ from math import exp
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
 from load_corpus import load_data_and_create_features
+from Viterbi import Viterbi
 
 
 ###################################
@@ -26,16 +27,31 @@ class MEMM():
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', train_filename))
 
-        train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
+        test_words, test_tags, test_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', test_filename), dataset = 'Test', Features_Object = feat_obj)
 
         self.train_model(
                 train_words,
                 train_tags,
                 train_features,
-                optimize_with_manual_ga = False)
+                optimize_with_manual_ga = True)
 
 
+        output_words, output_pred, actual_tags = self.test_dataset(
+                test_words=test_words,
+                test_features=test_features,
+                test_tags=test_tags,
+                all_states=self.all_tags,
+                probabilities_dict=self.state_feature_probability_dict,
+                smoothing_factor=1/float(len(self.all_tags)))
+        total = 0.0
+        correct = 0.0
+        for i in range(output_pred):
+            total += 1
+            if output_pred[i] == actual_tags[i]:
+                correct += 1
+        print('Total / correct: [' + str(total)+ ' : ' + str(correct) + ']')
+        print("Acuuracy : " + str(correct/total))
 
     def train_model(
             self,
@@ -81,7 +97,7 @@ class MEMM():
             for feature in all_features:
                 if feature not in state_features_occurrences[state]:
                     state_features_occurrences[state][feature] = 0.0
-
+        print('Finished empiric counts...')
         # get wieghts per tag|feature
         if (True == optimize_with_manual_ga):
             state_feature_weight_dict = self.calc_feature_weights_manual_ga(
@@ -283,3 +299,54 @@ class MEMM():
                 self.index_to_state_feature_list.append((state, feature))
                 self.state_feature_to_index_dict[state][feature] = i
                 i += 1
+
+    def test_dataset(
+            self,
+            test_words,
+            test_features,
+            all_states,
+            probabilities_dict,
+            smoothing_factor,
+            test_tags = None):
+
+        output_words          = []
+        output_pred           = []
+        num_of_processed_sent = 0
+
+        if test_tags is not None:
+            actual_tags = []
+        else:
+            actual_tags = None
+
+        temp_words      = []
+        temp_featrues   = []
+        for i in range(len(test_words)):
+            if test_words[i] == 'STOP':
+                vt_res = Viterbi.viterbi_for_memm(obs=tuple(temp_featrues),
+                                                  states=tuple(all_states),
+                                                  train_probabilities=probabilities_dict,
+                                                  smoothing_factor=smoothing_factor)
+
+                output_words.extend(temp_words)
+                output_pred.extend(vt_res[1])
+                num_of_processed_sent += 1
+                print(
+                    'Sentence Processed :' + str(num_of_processed_sent) + ' , Viterbi Probabilities: ' + str(vt_res[0]))
+
+                temp_words = []
+                temp_featrues = []
+
+            elif test_words[i] == '*':
+                continue
+
+            else:
+                temp_words.append(test_words[i])
+                temp_featrues.append(test_features[i])
+                if test_tags is not None:
+                    actual_tags.append(test_tags[i])
+
+        return output_words, output_pred, actual_tags
+
+
+if __name__ == '__main__':
+    model = MEMM()

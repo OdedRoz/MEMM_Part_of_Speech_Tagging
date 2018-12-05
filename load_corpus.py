@@ -31,7 +31,7 @@ def load_data_and_create_features(path, dataset='Train', Features_Object = None)
             #word_possible_labels.setdefault(word, []).append(tag)
         words.append('STOP')
         tags.append('STOP')
-        features.extend([])
+        features.extend([[]])
     return words,tags,features,features_object
 
 def get_words_and_tags_set(content):
