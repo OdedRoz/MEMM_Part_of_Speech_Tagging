@@ -20,8 +20,8 @@ class MEMM():
             test_filename  = "test.wtag"):
 
         # init params
-        self.number_of_gradient_decent_steps = 5
-        self.regularization_factor           = 2
+        self.number_of_gradient_decent_steps = 3
+        self.regularization_factor           = 0.5
         self.learning_rate                   = 0.01
         # load train in requested format
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
@@ -46,7 +46,7 @@ class MEMM():
                 smoothing_factor=1/float(len(self.all_tags)))
         total = 0.0
         correct = 0.0
-        for i in range(output_pred):
+        for i in range(len(output_pred)):
             total += 1
             if output_pred[i] == actual_tags[i]:
                 correct += 1
@@ -140,6 +140,7 @@ class MEMM():
          lead to it in train
         :return: for each state and observation in state_feature_count_dict dict containing learned weight
         """
+        self.all_tags = all_states
         state_feature_weight_dict = {}
         # init all weights to 0
         for state in state_feature_count_dict:
@@ -322,7 +323,7 @@ class MEMM():
         temp_featrues   = []
         for i in range(len(test_words)):
             if test_words[i] == 'STOP':
-                vt_res = Viterbi.viterbi_for_memm(obs=tuple(temp_featrues),
+                vt_res = Viterbi.viterbi_for_memm(features_list=tuple(temp_featrues),
                                                   states=tuple(all_states),
                                                   train_probabilities=probabilities_dict,
                                                   smoothing_factor=smoothing_factor)

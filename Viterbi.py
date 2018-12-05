@@ -29,7 +29,7 @@ class Viterbi:
         verge_factor = 10 ** (-100)
         adjust_factor = 10 ** 99
         for t in range(1, len(features_list)):
-            if t % 20 == 0:
+            if t % 2 == 0:
                 if all([val < verge_factor for val in V[t - 1].values()]):
                     # for probability not run to zero
                     print('Making Probability Adjust')
