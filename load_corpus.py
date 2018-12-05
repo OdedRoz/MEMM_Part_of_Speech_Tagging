@@ -16,16 +16,22 @@ def load_train_data_and_create_features(path):
         #uncomment if we want to add ** in start of santance
         words.extend(['*', '*'])
         tags.extend(['*', '*'])
+        features.extend([[],[]])
         for i,word_tag in enumerate(line.split()):
             word, tag = word_tag.split('_')
             words.append(word)
             tags.append(tag)
-            features.append(features_object.set_features_for_word(words[-3:],tags[-3:]))
+            current_word_features = features_object.set_features_for_word(words[-3:],tags[-3:])
+            features.append(features_object.features_to_weighets_index(current_word_features))
+            #test
+            #features_object.multiply_features_with_weighets(features[-1])
 
             #if word exists append tag to wotds list, else create a list and append the tag
             word_possible_labels.setdefault(word, []).extend(tag)
         words.append('STOP')
         tags.append('STOP')
+        features.extend([])
+    pass
 
 def get_words_and_tags_set(content):
     words_set = set()

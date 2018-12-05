@@ -16,12 +16,44 @@ class Features:
         self.f104_dict = self.create_features_dict(self.f104)
         self.f105 = tags_set
         self.f105_dict = self.create_features_dict(self.f105)
+        self.all_features_dicts = [self.f100_dict,
+                                   self.f101_dict,
+                                   self.f102_dict,
+                                   self.f103_dict,
+                                   self.f104_dict,
+                                   self.f105_dict]
+        self.features_dicts_sizes = self.get_features_dicts_sizes()
         self.features_size = self.get_features_size()
-        self.features_to_weighet_dict = self.create_features_to_weighet_dict()
         self.weights = np.zeros(self.features_size)
+        #self.features_to_weighet_dict = self.create_features_to_weighet_dict()
 
-    def create_features_to_weighet_dict(self):
-        pass
+    def multiply_features_with_weighets(self,features):
+        sum = 0
+        for feature in features:
+            sum += self.weights[feature]
+
+
+
+
+    def get_features_dicts_sizes(self):
+        return {'f100': len(self.f100_dict),
+                'f101': len(self.f101_dict),
+                'f102': len(self.f102_dict),
+                'f103': len(self.f103_dict),
+                'f104': len(self.f104_dict),
+                'f105': len(self.f105_dict),}
+
+
+    def features_to_weighets_index(self,word_dicts_of_features):
+        index_of_weighets = []
+        feature_counter = 0
+        for fx, features in word_dicts_of_features.items():
+            index_of_weighets.extend([(x+feature_counter) for x in features])
+            feature_counter += self.features_dicts_sizes[fx]
+        return index_of_weighets
+
+
+
 
     def get_features_size(self):
         return sum([len(self.f100),
@@ -34,7 +66,7 @@ class Features:
     def set_features_for_word(self,words,tags):
         word = words[-1]
         tag = tags[-1]
-        f100 = self.f100_dict[(word,tag)]
+        f100 = [self.f100_dict[(word,tag)]]
         sufpresize = [1,2,3,4]
         f101 = list()
         f102 = list()
@@ -42,10 +74,11 @@ class Features:
             if len(words[-1]) >= size:
                 f101.append(self.f101_dict[word[-size:]])
                 f102.append(self.f102_dict[word[:size]])
-        f103 = self.f103_dict[(tags[0],tags[1],tags[2])]
-        f104 = self.f104_dict[(tags[1],tags[2])]
-        f105 = self.f105_dict[(tags[2])]
-        return {'f101': f101,
+        f103 = [self.f103_dict[(tags[0],tags[1],tags[2])]]
+        f104 = [self.f104_dict[(tags[1],tags[2])]]
+        f105 = [self.f105_dict[(tags[2])]]
+        return {'f100': f100,
+                'f101': f101,
                 'f102': f102,
                 'f103': f103,
                 'f104': f104,
