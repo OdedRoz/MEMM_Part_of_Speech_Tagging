@@ -6,7 +6,7 @@ def load_train_data_and_create_features(path):
     # you may also want to remove whitespace characters like `\n` at the end of each line
     content = [x.strip() for x in content]
     words_set, tags_set = get_words_and_tags_set(content)
-    features = Features(words_set,tags_set)
+    features_object = Features(words_set,tags_set)
 
     word_possible_labels = {}
     words = []
@@ -14,12 +14,14 @@ def load_train_data_and_create_features(path):
     features = []
     for idx, line in enumerate(content):
         #uncomment if we want to add ** in start of santance
-        #words.extend(['*', '*'])
-        #tags.extend(['*', '*'])
-        for word_tag in line.split():
+        words.extend(['*', '*'])
+        tags.extend(['*', '*'])
+        for i,word_tag in enumerate(line.split()):
             word, tag = word_tag.split('_')
             words.append(word)
             tags.append(tag)
+            features.append(features_object.set_features_for_word(words[-3:],tags[-3:]))
+
             #if word exists append tag to wotds list, else create a list and append the tag
             word_possible_labels.setdefault(word, []).extend(tag)
         words.append('STOP')
@@ -33,6 +35,10 @@ def get_words_and_tags_set(content):
             word, tag = word_tag.split('_')
             words_set.add(word)
             tags_set.add(tag)
+    words_set.add('STOP')
+    words_set.add('*')
+    tags_set.add('STOP')
+    tags_set.add('*')
     return words_set, tags_set
 
 def create_word_tag_pairs(words_set,tags_set):
