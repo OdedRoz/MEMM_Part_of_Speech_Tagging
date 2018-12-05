@@ -50,7 +50,7 @@ class Features:
         for fx, features in word_dicts_of_features.items():
             index_of_weighets.extend([(x+feature_counter) for x in features])
             feature_counter += self.features_dicts_sizes[fx]
-        return index_of_weighets
+        return tuple(index_of_weighets)
 
 
 
@@ -66,17 +66,39 @@ class Features:
     def set_features_for_word(self,words,tags):
         word = words[-1]
         tag = tags[-1]
-        f100 = [self.f100_dict[(word,tag)]]
+        try:
+            f100 = [self.f100_dict[(word,tag)]]
+        except:
+            print(f'({word},{tag}) OOV for f100')
+            f100 = list()
         sufpresize = [1,2,3,4]
         f101 = list()
         f102 = list()
         for size in sufpresize:
             if len(words[-1]) >= size:
-                f101.append(self.f101_dict[word[-size:]])
-                f102.append(self.f102_dict[word[:size]])
-        f103 = [self.f103_dict[(tags[0],tags[1],tags[2])]]
-        f104 = [self.f104_dict[(tags[1],tags[2])]]
-        f105 = [self.f105_dict[(tags[2])]]
+                try:
+                    f101.append(self.f101_dict[word[-size:]])
+                except:
+                    print(f'{word[-size:]} OOV for f101')
+                try:
+                    f102.append(self.f102_dict[word[:size]])
+                except:
+                    print(f'{word[:size]} OOV for f102')
+        try:
+            f103 = [self.f103_dict[(tags[0],tags[1],tags[2])]]
+        except:
+            print(f'{tags[0]},{tags[1]},{tags[2]} OOV for f103')
+            f103 = list()
+        try:
+            f104 = [self.f104_dict[(tags[1],tags[2])]]
+        except:
+            print(f'{tags[1]},{tags[2]} OOV for f104')
+            f104 = list()
+        try:
+            f105 = [self.f105_dict[(tags[2])]]
+        except:
+            print(f'{tags[2]} OOV for f105')
+            f105 = list()
         return {'f100': f100,
                 'f101': f101,
                 'f102': f102,

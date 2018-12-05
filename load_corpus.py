@@ -1,17 +1,19 @@
 from Features import Features
 
-def load_train_data_and_create_features(path):
+def load_data_and_create_features(path, dataset='Train', Features_Object = None):
     with open(path) as f:
         content = f.readlines()
-    # you may also want to remove whitespace characters like `\n` at the end of each line
     content = [x.strip() for x in content]
     words_set, tags_set = get_words_and_tags_set(content)
-    features_object = Features(words_set,tags_set)
-
+    if dataset=='Train':
+        features_object = Features(words_set,tags_set)
+    elif dataset=='Test':
+        features_object = Features_Object
     word_possible_labels = {}
     words = []
     tags = []
     features = []
+    print('creating words,tags and features')
     for idx, line in enumerate(content):
         #uncomment if we want to add ** in start of santance
         words.extend(['*', '*'])
@@ -25,13 +27,12 @@ def load_train_data_and_create_features(path):
             features.append(features_object.features_to_weighets_index(current_word_features))
             #test
             #features_object.multiply_features_with_weighets(features[-1])
-
             #if word exists append tag to wotds list, else create a list and append the tag
-            word_possible_labels.setdefault(word, []).extend(tag)
+            #word_possible_labels.setdefault(word, []).append(tag)
         words.append('STOP')
         tags.append('STOP')
         features.extend([])
-    pass
+    return words,tags,features,features_object
 
 def get_words_and_tags_set(content):
     words_set = set()
@@ -56,14 +57,8 @@ def create_word_tag_pairs(words_set,tags_set):
 
 
 
-
-
-
-
-
-
-
 if __name__ == '__main__':
-    load_train_data_and_create_features('data/train.wtag')
+    words, tags, features, Features_object = load_data_and_create_features('data/train.wtag','Train')
+    load_data_and_create_features('data/test.wtag', 'Test', Features_object)
 
 
