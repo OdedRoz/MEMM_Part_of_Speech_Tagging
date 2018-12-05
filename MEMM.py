@@ -21,8 +21,8 @@ class MEMM():
 
         # init params
         self.number_of_gradient_decent_steps = 3
-        self.regularization_factor           = 0.5
-        self.learning_rate                   = 0.01
+        self.regularization_factor           = 2
+        self.learning_rate                   = 0.0005
         # load train in requested format
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', train_filename))
@@ -44,14 +44,22 @@ class MEMM():
                 all_states=self.all_tags,
                 probabilities_dict=self.state_feature_probability_dict,
                 smoothing_factor=1/float(len(self.all_tags)))
+
         total = 0.0
         correct = 0.0
+
         for i in range(len(output_pred)):
             total += 1
             if output_pred[i] == actual_tags[i]:
                 correct += 1
+
         print('Total / correct: [' + str(total)+ ' : ' + str(correct) + ']')
         print("Acuuracy : " + str(correct/total))
+
+        self.create_comfusion_matrix(
+                all_tags=self.all_tags,
+                pred_tags=output_pred,
+                actual_tags=actual_tags)
 
     def train_model(
             self,
@@ -66,6 +74,8 @@ class MEMM():
         feature_count_dict = {}
         all_features = []
         all_tags = list(set(train_tags))
+        all_tags.remove('*')
+        all_tags.remove('STOP')
         for temp_tag in all_tags:
             state_features_occurrences[temp_tag] = {}
 
@@ -97,6 +107,8 @@ class MEMM():
             for feature in all_features:
                 if feature not in state_features_occurrences[state]:
                     state_features_occurrences[state][feature] = 0.0
+
+        self.all_features_len = len(all_features)
         print('Finished empiric counts...')
         # get wieghts per tag|feature
         if (True == optimize_with_manual_ga):
@@ -108,6 +120,7 @@ class MEMM():
             self.calc_feature_weights_scipy_optim(
                     all_tags,
                     all_features,
+                    train_features,
                     feature_count_dict,
                     state_features_occurrences)
 
@@ -187,6 +200,7 @@ class MEMM():
             self,
             all_tags,
             all_features,
+            train_features,
             feature_count_dict,
             state_features_occurrences):
 
@@ -197,6 +211,7 @@ class MEMM():
         self.all_tags                   = all_tags
         # init weights to zero
         self.state_feature_weight_arr = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
+        self.train_features = train_features
         optimal_params = fmin_l_bfgs_b(func=self.loss_func_and_gradient, x0=self.state_feature_weight_arr)
 
         if optimal_params[2]['warnflag']:
@@ -222,7 +237,7 @@ class MEMM():
         # init partial deteratives
         all_partial_deteratives = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
 
-        expected_loss_feature_dict = {}
+        # expected_loss_feature_dict = {}
 
         for feature_indx in range(len(self.index_to_state_feature_list)):
             curr_state_feature = self.index_to_state_feature_list[feature_indx]
@@ -231,18 +246,18 @@ class MEMM():
             curr_weight  = weights[feature_indx]
             curr_empirical_count = self.state_features_occurrences[curr_state][curr_feature]
 
-            if curr_feature not in expected_loss_feature_dict:
-                if self.state_features_occurrences[curr_state][curr_feature] > 0:
-                    expected_loss_feature_dict[curr_feature] = [
-                        self.state_features_occurrences[curr_state][curr_feature]*exp(curr_weight)]
-                else:
-                    expected_loss_feature_dict[curr_feature] = [exp(0)]
-            else:
-                if self.state_features_occurrences[curr_state][curr_feature] > 0:
-                    expected_loss_feature_dict[curr_feature].append(
-                        self.state_features_occurrences[curr_state][curr_feature]*exp(curr_weight))
-                else:
-                    expected_loss_feature_dict[curr_feature].append(exp(0))
+            # if curr_feature not in expected_loss_feature_dict:
+            #     if self.state_features_occurrences[curr_state][curr_feature] > 0:
+            #         expected_loss_feature_dict[curr_feature] = [
+            #             self.state_features_occurrences[curr_state][curr_feature]*exp(curr_weight)]
+            #     else:
+            #         expected_loss_feature_dict[curr_feature] = [exp(0)]
+            # else:
+            #     if self.state_features_occurrences[curr_state][curr_feature] > 0:
+            #         expected_loss_feature_dict[curr_feature].append(
+            #             self.state_features_occurrences[curr_state][curr_feature]*exp(curr_weight))
+            #     else:
+            #         expected_loss_feature_dict[curr_feature].append(exp(0))
 
             all_empirical_counts[feature_indx] = curr_empirical_count
 
@@ -269,9 +284,17 @@ class MEMM():
             all_partial_deteratives[feature_indx] = curr_partial_derivative
 
         expected_loss = 0.0
+        print('Optimization Step Calculation Expected Loss')
+        for feature_list in self.train_features:
+            curr_exp_loss = 0.0
+            for feature in feature_list:
+                for state in self.all_tags:
+                    curr_exp_loss += exp(weights[self.state_feature_to_index_dict[state][feature]])
 
-        for feature in expected_loss_feature_dict:
-            expected_loss += np.log(sum(expected_loss_feature_dict[feature]))
+            curr_exp_loss += (self.all_features_len - len(feature_list))*exp(0)*len(self.all_tags)
+            expected_loss += np.log(curr_exp_loss)
+        # for feature in expected_loss_feature_dict:
+        #     expected_loss += np.log(sum(expected_loss_feature_dict[feature]))
 
         regularization_loss = (np.sum(np.square(weights)) * self.regularization_factor / 2)
         loss = np.sum(weights * all_empirical_counts) - expected_loss - regularization_loss
@@ -347,6 +370,27 @@ class MEMM():
                     actual_tags.append(test_tags[i])
 
         return output_words, output_pred, actual_tags
+
+
+    def create_comfusion_matrix(
+            self,
+            all_tags,
+            pred_tags,
+            actual_tags):
+
+        tag_pred_dict = {}
+        for outer_tag in all_tags:
+            tag_pred_dict[outer_tag] = {}
+            for inner_tag in all_tags:
+                tag_pred_dict[outer_tag][inner_tag] = 0
+
+        for i in range(len(pred_tags)):
+            tag_pred_dict[actual_tags[i]][pred_tags[i]] += 1
+
+        import pandas as pd
+        # print (tag_pred_dict)
+        df = pd.DataFrame(tag_pred_dict)
+        df.to_csv('Comfusion_Matrix.csv')
 
 
 if __name__ == '__main__':
