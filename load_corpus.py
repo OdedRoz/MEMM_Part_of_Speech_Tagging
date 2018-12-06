@@ -29,7 +29,7 @@ def load_data_and_create_features(path, dataset='Train', Features_Object = None)
             except IndexError:
                 next_word = 'STOP'
             current_word_features = features_object.set_features_for_word(words[-3:],tags[-3:],next_word)
-            features.append(features_object.features_to_weighets_index(current_word_features))
+            features.append(current_word_features)
             #test
             #features_object.multiply_features_with_weighets(features[-1])
             #if word exists append tag to wotds list, else create a list and append the tag

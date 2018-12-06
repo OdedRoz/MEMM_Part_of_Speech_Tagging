@@ -75,6 +75,13 @@ class Features:
                     len(self.f107)])
 
     def set_features_for_word(self,words,tags,next_word):
+        """
+        return which features are 1 for current words and tags
+        :param words: list of 3 words [i-2,i-1,i]
+        :param tags: list of 3 tags [i-2,i-1,i]
+        :param next_word: word i+1
+        :return: indexes of the feature vectors which are 1
+        """
         word = words[-1]
         tag = tags[-1]
         try:
@@ -88,13 +95,13 @@ class Features:
         for size in sufpresize:
             if len(words[-1]) >= size:
                 try:
-                    f101.append(self.f101_dict[word[-size:]])
+                    f101.append(self.f101_dict[(word[-size:],tag)])
                 except:
-                    print(f'{word[-size:]} OOV for f101')
+                    print(f'({word[-size:]},{tag} OOV for f101')
                 try:
-                    f102.append(self.f102_dict[word[:size]])
+                    f102.append(self.f102_dict[(word[:size],tag)])
                 except:
-                    print(f'{word[:size]} OOV for f102')
+                    print(f'({word[:size]},{tag}) OOV for f102')
         try:
             f103 = [self.f103_dict[(tags[0],tags[1],tags[2])]]
         except:
@@ -121,14 +128,16 @@ class Features:
             print(f'({next_word},{tags[2]}) OOV for f107')
             f107 = list()
 
-        return {'f100': f100,
-                'f101': f101,
-                'f102': f102,
-                'f103': f103,
-                'f104': f104,
-                'f105': f105,
-                'f106': f106,
-                'f107': f107}
+        dict_of_features =  {'f100': f100,
+                             'f101': f101,
+                             'f102': f102,
+                             'f103': f103,
+                             'f104': f104,
+                             'f105': f105,
+                             'f106': f106,
+                             'f107': f107}
+        features = self.features_to_weighets_index(dict_of_features)
+        return features
 
 
     def create_features_dict(self,features):
@@ -153,7 +162,8 @@ class Features:
         suffixes = set()
         for word in self.words_set:
             for size in suffixes_sizes:
-                suffixes.add(word[-size:])
+                for tag in self.tags_set:
+                    suffixes.add((word[-size:],tag))
         return suffixes
 
     def create_prefixes(self):
@@ -161,7 +171,8 @@ class Features:
         prefixes = set()
         for word in self.words_set:
             for size in prefixes_sizes:
-                prefixes.add(word[:size])
+                for tag in self.tags_set:
+                    prefixes.add((word[:size],tag))
         return prefixes
 
     def create_three_tags(self):
