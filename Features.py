@@ -4,7 +4,8 @@ class Features:
     def __init__(self,words_set, tags_set):
         self.words_set = words_set
         self.tags_set = tags_set
-        self.f100 = self.create_word_tag_pairs()
+        self.all_word_tad_pairs = self.create_word_tag_pairs()
+        self.f100 = self.all_word_tad_pairs
         self.f100_dict = self.create_features_dict(self.f100)
         self.f101 = self.create_suffixes()
         self.f101_dict = self.create_features_dict(self.f101)
@@ -16,12 +17,18 @@ class Features:
         self.f104_dict = self.create_features_dict(self.f104)
         self.f105 = tags_set
         self.f105_dict = self.create_features_dict(self.f105)
+        self.f106 = self.all_word_tad_pairs
+        self.f106_dict = self.create_features_dict(self.f106)
+        self.f107 = self.all_word_tad_pairs
+        self.f107_dict = self.create_features_dict(self.f107)
         self.all_features_dicts = [self.f100_dict,
                                    self.f101_dict,
                                    self.f102_dict,
                                    self.f103_dict,
                                    self.f104_dict,
-                                   self.f105_dict]
+                                   self.f105_dict,
+                                   self.f106_dict,
+                                   self.f107_dict,]
         self.features_dicts_sizes = self.get_features_dicts_sizes()
         self.features_size = self.get_features_size()
         self.weights = np.zeros(self.features_size)
@@ -41,7 +48,9 @@ class Features:
                 'f102': len(self.f102_dict),
                 'f103': len(self.f103_dict),
                 'f104': len(self.f104_dict),
-                'f105': len(self.f105_dict),}
+                'f105': len(self.f105_dict),
+                'f106': len(self.f106_dict),
+                'f107': len(self.f107_dict)}
 
 
     def features_to_weighets_index(self,word_dicts_of_features):
@@ -61,9 +70,11 @@ class Features:
                     len(self.f102),
                     len(self.f103),
                     len(self.f104),
-                    len(self.f105)])
+                    len(self.f105),
+                    len(self.f106),
+                    len(self.f107)])
 
-    def set_features_for_word(self,words,tags):
+    def set_features_for_word(self,words,tags,next_word):
         word = words[-1]
         tag = tags[-1]
         try:
@@ -99,12 +110,25 @@ class Features:
         except:
             print(f'{tags[2]} OOV for f105')
             f105 = list()
+        try:
+            f106 = [self.f106_dict[(words[1],tags[2])]]
+        except:
+            print(f'({words[1]},{tags[2]}) OOV for f106')
+            f106 = list()
+        try:
+            f107 = [self.f107_dict[(next_word,tags[2])]]
+        except:
+            print(f'({next_word},{tags[2]}) OOV for f107')
+            f107 = list()
+
         return {'f100': f100,
                 'f101': f101,
                 'f102': f102,
                 'f103': f103,
                 'f104': f104,
-                'f105': f105}
+                'f105': f105,
+                'f106': f106,
+                'f107': f107}
 
 
     def create_features_dict(self,features):

@@ -19,11 +19,16 @@ def load_data_and_create_features(path, dataset='Train', Features_Object = None)
         words.extend(['*', '*'])
         tags.extend(['*', '*'])
         features.extend([[],[]])
-        for i,word_tag in enumerate(line.split()):
+        splited_line = line.split()
+        for i,word_tag in enumerate(splited_line):
             word, tag = word_tag.split('_')
             words.append(word)
             tags.append(tag)
-            current_word_features = features_object.set_features_for_word(words[-3:],tags[-3:])
+            try:
+                next_word, _ = splited_line[i+1].split('_')
+            except IndexError:
+                next_word = 'STOP'
+            current_word_features = features_object.set_features_for_word(words[-3:],tags[-3:],next_word)
             features.append(features_object.features_to_weighets_index(current_word_features))
             #test
             #features_object.multiply_features_with_weighets(features[-1])
