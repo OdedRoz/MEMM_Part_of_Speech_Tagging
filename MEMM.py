@@ -4,7 +4,7 @@ import time
 from math import exp
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
-from load_corpus import load_data_and_create_features
+from load_corpus2 import load_data_and_create_features
 from Viterbi import Viterbi
 
 
@@ -21,20 +21,21 @@ class MEMM():
 
         # init params
         self.number_of_gradient_decent_steps = 3
-        self.regularization_factor           = 2
-        self.learning_rate                   = 0.0005
+        self.regularization_factor           = 0.1
+        self.learning_rate                   = 0.001
+        self.optimize_method                 = 1
         # load train in requested format
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', train_filename))
 
-        test_words, test_tags, test_features, feat_obj = load_data_and_create_features(
+        test_words, test_tags, test_features, feat_obj_none = load_data_and_create_features(
                 os.path.join('data', test_filename), dataset = 'Test', Features_Object = feat_obj)
 
         self.train_model(
                 train_words,
                 train_tags,
                 train_features,
-                optimize_with_manual_ga = True)
+                optimize_with_manual_ga = False)
 
 
         output_words, output_pred, actual_tags = self.test_dataset(
@@ -43,7 +44,8 @@ class MEMM():
                 test_tags=test_tags,
                 all_states=self.all_tags,
                 probabilities_dict=self.state_feature_probability_dict,
-                smoothing_factor=1/float(len(self.all_tags)))
+                smoothing_factor=1/float(len(self.all_tags)),
+                feature_obj=feat_obj)
 
         total = 0.0
         correct = 0.0
@@ -72,6 +74,7 @@ class MEMM():
         # init useful dictionaries
         state_features_occurrences = {}
         feature_count_dict = {}
+        feature_to_all_its_obs_dict = {}
         all_features = []
         all_tags = list(set(train_tags))
         all_tags.remove('*')
@@ -84,6 +87,7 @@ class MEMM():
             curr_word    = train_words[i] # not needed
             curr_tag     = train_tags[i]
             curr_features= train_features[i]
+            train_features[i] = tuple(train_features[i])
 
             if ('STOP' == curr_word) or ('*' == curr_word):
                 continue
@@ -98,8 +102,10 @@ class MEMM():
                 # count how many times each feature appeared
                 if curr_feat not in feature_count_dict:
                     feature_count_dict[curr_feat] = 1
+                    feature_to_all_its_obs_dict[curr_feat] = [(curr_features, curr_tag)]
                 else:
                     feature_count_dict[curr_feat] += 1
+                    feature_to_all_its_obs_dict[curr_feat].append((curr_features, curr_tag))
 
         # adds to every state zero counts for features that didn't appear with it
         all_features = list(set(all_features))
@@ -109,6 +115,8 @@ class MEMM():
                     state_features_occurrences[state][feature] = 0.0
 
         self.all_features_len = len(all_features)
+        self.feature_to_all_its_obs_dict = feature_to_all_its_obs_dict
+
         print('Finished empiric counts...')
         # get wieghts per tag|feature
         if (True == optimize_with_manual_ga):
@@ -232,13 +240,24 @@ class MEMM():
             self,
             weights):
 
+        print ("Min Weigth: " + str(np.amin(weights))
+              + ' Max Weight: ' + str(np.amax(weights)) + " Weight size: " + str(np.sum(np.square(weights))) )
         # init empirical counts
         all_empirical_counts    = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
         # init partial deteratives
         all_partial_deteratives = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
 
-        # expected_loss_feature_dict = {}
+        weight_sum_for_all_obs = {}
+        for feature_list in self.train_features:
+            if feature_list not in weight_sum_for_all_obs:
+                weight_sum_for_all_obs[feature_list] = {}
+                for inner_state in self.all_tags:
+                    exp_sum = 0.0
+                    for inner_feature in feature_list:
+                        exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
+                    weight_sum_for_all_obs[feature_list][inner_state] = exp_sum
 
+        print ("Calculated help dict")
         for feature_indx in range(len(self.index_to_state_feature_list)):
             curr_state_feature = self.index_to_state_feature_list[feature_indx]
             curr_state   = curr_state_feature[0]
@@ -246,39 +265,40 @@ class MEMM():
             curr_weight  = weights[feature_indx]
             curr_empirical_count = self.state_features_occurrences[curr_state][curr_feature]
 
-            # if curr_feature not in expected_loss_feature_dict:
-            #     if self.state_features_occurrences[curr_state][curr_feature] > 0:
-            #         expected_loss_feature_dict[curr_feature] = [
-            #             self.state_features_occurrences[curr_state][curr_feature]*exp(curr_weight)]
-            #     else:
-            #         expected_loss_feature_dict[curr_feature] = [exp(0)]
-            # else:
-            #     if self.state_features_occurrences[curr_state][curr_feature] > 0:
-            #         expected_loss_feature_dict[curr_feature].append(
-            #             self.state_features_occurrences[curr_state][curr_feature]*exp(curr_weight))
-            #     else:
-            #         expected_loss_feature_dict[curr_feature].append(exp(0))
-
             all_empirical_counts[feature_indx] = curr_empirical_count
 
             expected_count = 0.0
-            denominator = 0.0
-            for inner_state in self.all_tags:
-                if curr_feature in self.state_features_occurrences[inner_state]:
-                    amount_appeared_together = self.state_features_occurrences[inner_state][curr_feature]
-                    denominator += amount_appeared_together * exp(curr_weight)
-                    denominator += (self.feature_count_dict[curr_feature] - amount_appeared_together) * exp(0)
-                else:
-                    print('Not Supposed To Get Here')
-                    # denominator += feature_count_dict[outer_obs] * exp(0)
+            if self.optimize_method == 1:
+                for obs in self.feature_to_all_its_obs_dict[curr_feature]:
+                    numerator = 0.0
+                    denominator = 0.0
+                    for inner_state in self.all_tags:
+                        exp_sum = weight_sum_for_all_obs[obs[0]][inner_state]
+                        denominator += exp(exp_sum)
+                        if inner_state == obs[1]:
+                            numerator = exp(exp_sum)
+                    if numerator == 0.0:
+                        print("Not supposed to get here (numerator == 0)")
+                    expected_count += float(numerator) / denominator
 
-            for inner_state in self.all_tags:
-                if curr_feature in self.state_features_occurrences[inner_state]:
-                    numerator = self.state_features_occurrences[inner_state][curr_feature] * exp(curr_weight)
-                    expected_count += numerator / float(denominator)
+            if self.optimize_method == 2:
+                for obs in self.feature_to_all_its_obs_dict[curr_feature]:
+                    if obs[1] == curr_state:
+                        numerator = 0.0
+                        denominator = 0.0
+                        for inner_state in self.all_tags:
+                            exp_sum = 0.0
+                            for inner_feature in obs[0]:
+                                exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
+                            denominator += exp(exp_sum)
+                            if inner_state == curr_state:
+                                numerator = exp(exp_sum)
+                        if numerator == 0.0:
+                            print ("Not supposed to get here (numerator == 0)")
+                        expected_count += float(numerator)/denominator
 
             # the last part of the formula is to avoid overfitting
-            curr_partial_derivative = float(curr_empirical_count) - expected_count - curr_weight / float(
+            curr_partial_derivative = float(curr_empirical_count) - expected_count - curr_weight*(
                 self.regularization_factor)
 
             all_partial_deteratives[feature_indx] = curr_partial_derivative
@@ -287,19 +307,19 @@ class MEMM():
         print('Optimization Step Calculation Expected Loss')
         for feature_list in self.train_features:
             curr_exp_loss = 0.0
-            for feature in feature_list:
-                for state in self.all_tags:
-                    curr_exp_loss += exp(weights[self.state_feature_to_index_dict[state][feature]])
-
-            curr_exp_loss += (self.all_features_len - len(feature_list))*exp(0)*len(self.all_tags)
+            for state in self.all_tags:
+                curr_state_wieghts_sum = 0.0
+                for feature in feature_list:
+                    curr_state_wieghts_sum += weights[self.state_feature_to_index_dict[state][feature]]
+                curr_exp_loss += exp(curr_state_wieghts_sum)
+            # curr_exp_loss *= (self.all_features_len - len(feature_list))*exp(0)*len(self.all_tags)
             expected_loss += np.log(curr_exp_loss)
-        # for feature in expected_loss_feature_dict:
-        #     expected_loss += np.log(sum(expected_loss_feature_dict[feature]))
 
         regularization_loss = (np.sum(np.square(weights)) * self.regularization_factor / 2)
         loss = np.sum(weights * all_empirical_counts) - expected_loss - regularization_loss
 
-        print('Finished Optimization Step Loss: [' + str((-1)*loss) + "]")
+        print('Finished Optimization Step Loss: [' + str((-1)*loss) + "] Gradient Vec Size:"
+              + str(np.sum(np.square(all_partial_deteratives))) )
 
         return ((-1)*loss), (-1)*all_partial_deteratives
 
@@ -331,7 +351,8 @@ class MEMM():
             all_states,
             probabilities_dict,
             smoothing_factor,
-            test_tags = None):
+            test_tags = None,
+            feature_obj = None):
 
         output_words          = []
         output_pred           = []
@@ -347,9 +368,11 @@ class MEMM():
         for i in range(len(test_words)):
             if test_words[i] == 'STOP':
                 vt_res = Viterbi.viterbi_for_memm(features_list=tuple(temp_featrues),
+                                                  word_list=temp_words + ['STOP'],
                                                   states=tuple(all_states),
                                                   train_probabilities=probabilities_dict,
-                                                  smoothing_factor=smoothing_factor)
+                                                  smoothing_factor=smoothing_factor,
+                                                  feature_obj=feature_obj)
 
                 output_words.extend(temp_words)
                 output_pred.extend(vt_res[1])
