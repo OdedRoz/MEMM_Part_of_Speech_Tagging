@@ -287,9 +287,10 @@ class MEMM():
                         numerator = 0.0
                         denominator = 0.0
                         for inner_state in self.all_tags:
-                            exp_sum = 0.0
-                            for inner_feature in obs[0]:
-                                exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
+                            weight_sum_for_all_obs[obs[0]][inner_state]
+                            # exp_sum = 0.0
+                            # for inner_feature in obs[0]:
+                            #     exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
                             denominator += exp(exp_sum)
                             if inner_state == curr_state:
                                 numerator = exp(exp_sum)
@@ -308,9 +309,10 @@ class MEMM():
         for feature_list in self.train_features:
             curr_exp_loss = 0.0
             for state in self.all_tags:
-                curr_state_wieghts_sum = 0.0
-                for feature in feature_list:
-                    curr_state_wieghts_sum += weights[self.state_feature_to_index_dict[state][feature]]
+                curr_state_wieghts_sum = weight_sum_for_all_obs[feature_list][state]
+                # curr_state_wieghts_sum = 0.0
+                # for feature in feature_list:
+                #     curr_state_wieghts_sum += weights[self.state_feature_to_index_dict[state][feature]]
                 curr_exp_loss += exp(curr_state_wieghts_sum)
             # curr_exp_loss *= (self.all_features_len - len(feature_list))*exp(0)*len(self.all_tags)
             expected_loss += np.log(curr_exp_loss)
