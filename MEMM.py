@@ -23,7 +23,7 @@ class MEMM():
         self.number_of_gradient_decent_steps = 3
         self.regularization_factor           = 0.1
         self.learning_rate                   = 0.001
-        self.optimize_method                 = 1
+        self.optimize_method                 = 2
         # load train in requested format
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', train_filename))
@@ -86,7 +86,7 @@ class MEMM():
         for i in range(len(train_words)):
             curr_word    = train_words[i] # not needed
             curr_tag     = train_tags[i]
-            curr_features= train_features[i]
+            curr_features= tuple(train_features[i])
             train_features[i] = tuple(train_features[i])
 
             if ('STOP' == curr_word) or ('*' == curr_word):
@@ -268,35 +268,34 @@ class MEMM():
             all_empirical_counts[feature_indx] = curr_empirical_count
 
             expected_count = 0.0
-            if self.optimize_method == 1:
-                for obs in self.feature_to_all_its_obs_dict[curr_feature]:
+            # if self.optimize_method == 1:
+            #     for obs in self.feature_to_all_its_obs_dict[curr_feature]:
+            #         numerator = 0.0
+            #         denominator = 0.0
+            #         for inner_state in self.all_tags:
+            #             exp_sum = weight_sum_for_all_obs[obs[0]][inner_state]
+            #             denominator += exp(exp_sum)
+            #             if inner_state == obs[1]:
+            #                 numerator = exp(exp_sum)
+            #         if numerator == 0.0:
+            #             print("Not supposed to get here (numerator == 0)")
+            #         expected_count += float(numerator) / denominator
+
+            for obs in self.feature_to_all_its_obs_dict[curr_feature]:
+                if obs[1] == curr_state:
                     numerator = 0.0
                     denominator = 0.0
                     for inner_state in self.all_tags:
                         exp_sum = weight_sum_for_all_obs[obs[0]][inner_state]
+                        # exp_sum = 0.0
+                        # for inner_feature in obs[0]:
+                        #     exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
                         denominator += exp(exp_sum)
-                        if inner_state == obs[1]:
+                        if inner_state == curr_state:
                             numerator = exp(exp_sum)
                     if numerator == 0.0:
-                        print("Not supposed to get here (numerator == 0)")
-                    expected_count += float(numerator) / denominator
-
-            if self.optimize_method == 2:
-                for obs in self.feature_to_all_its_obs_dict[curr_feature]:
-                    if obs[1] == curr_state:
-                        numerator = 0.0
-                        denominator = 0.0
-                        for inner_state in self.all_tags:
-                            weight_sum_for_all_obs[obs[0]][inner_state]
-                            # exp_sum = 0.0
-                            # for inner_feature in obs[0]:
-                            #     exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
-                            denominator += exp(exp_sum)
-                            if inner_state == curr_state:
-                                numerator = exp(exp_sum)
-                        if numerator == 0.0:
-                            print ("Not supposed to get here (numerator == 0)")
-                        expected_count += float(numerator)/denominator
+                        print ("Not supposed to get here (numerator == 0)")
+                    expected_count += float(numerator)/denominator
 
             # the last part of the formula is to avoid overfitting
             curr_partial_derivative = float(curr_empirical_count) - expected_count - curr_weight*(
