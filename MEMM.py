@@ -324,7 +324,7 @@ class MEMM():
 
         print('Finished Optimization Step Loss: [' + str((-1)*loss) + "] Gradient Vec Size:"
               + str(np.sum(np.square(all_partial_deteratives))) )
-        if abs(self.curr_loss - (-1)*loss) < 50000:
+        if abs(self.curr_loss - (-1)*loss) < 0.5:
             print('Here...')
             self.learned_weights = weights
             raise Exception('Shitty Func')
