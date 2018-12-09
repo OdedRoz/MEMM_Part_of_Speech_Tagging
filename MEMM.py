@@ -23,7 +23,7 @@ class MEMM():
         self.number_of_gradient_decent_steps = 3
         self.regularization_factor           = 0.1
         self.learning_rate                   = 0.001
-        self.optimize_method                 = 2
+        self.viterbi_method                  = 2
         # load train in requested format
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', train_filename))
@@ -125,7 +125,7 @@ class MEMM():
                     feature_count_dict,
                     state_features_occurrences)
         else:
-            self.calc_feature_weights_scipy_optim(
+            state_feature_weight_dict = self.calc_feature_weights_scipy_optim(
                     all_tags,
                     all_features,
                     train_features,
@@ -143,7 +143,7 @@ class MEMM():
                     if obs in state_feature_weight_dict[inner_state]:
                         probability_denominator += exp(state_feature_weight_dict[inner_state][obs])
                 # creates the probability - might need smoothing
-                        state_feature_probability_dict[outer_state][obs] = exp(state_feature_weight_dict[outer_state][obs]) / float(
+                state_feature_probability_dict[outer_state][obs] = exp(state_feature_weight_dict[outer_state][obs]) / float(
                     probability_denominator)
         # saves leared probabilities in self argument
         self.state_feature_probability_dict =  state_feature_probability_dict
@@ -220,13 +220,14 @@ class MEMM():
         # init weights to zero
         self.state_feature_weight_arr = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
         self.train_features = train_features
+        self.curr_loss = 9999999
         optimal_params = fmin_l_bfgs_b(func=self.loss_func_and_gradient, x0=self.state_feature_weight_arr)
 
         if optimal_params[2]['warnflag']:
             print('Error in training:\n{}\\n'.format(optimal_params[2]['task']))
 
         res_weights = optimal_params[0]
-
+        self.learned_weights = res_weights
         state_feature_weight_dict = {}
         # init all weights to 0
         for state in all_tags:
@@ -321,7 +322,11 @@ class MEMM():
 
         print('Finished Optimization Step Loss: [' + str((-1)*loss) + "] Gradient Vec Size:"
               + str(np.sum(np.square(all_partial_deteratives))) )
+        if abs(self.curr_loss - (-1)*loss) < 0.5:
+            print('Here...')
+            all_partial_deteratives = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
 
+        self.curr_loss = (-1)*loss
         return ((-1)*loss), (-1)*all_partial_deteratives
 
     def create_feature_index_to_state_feature_mapping(
@@ -368,12 +373,18 @@ class MEMM():
         temp_featrues   = []
         for i in range(len(test_words)):
             if test_words[i] == 'STOP':
-                vt_res = Viterbi.viterbi_for_memm(features_list=tuple(temp_featrues),
-                                                  word_list=temp_words + ['STOP'],
-                                                  states=tuple(all_states),
-                                                  train_probabilities=probabilities_dict,
-                                                  smoothing_factor=smoothing_factor,
-                                                  feature_obj=feature_obj)
+                if self.viterbi_method == 1:
+                    vt_res = Viterbi.viterbi_for_memm(features_list=tuple(temp_featrues),
+                                                      word_list=temp_words + ['STOP'],
+                                                      states=tuple(all_states),
+                                                      train_probabilities=probabilities_dict,
+                                                      smoothing_factor=smoothing_factor,
+                                                      feature_obj=feature_obj)
+                else:
+                    vt_res = self.viterbi_for_memm2(features_list=tuple(temp_featrues),
+                                                    word_list=temp_words + ['STOP'],
+                                                    states=tuple(all_states),
+                                                    feature_obj=feature_obj)
 
                 output_words.extend(temp_words)
                 output_pred.extend(vt_res[1])
@@ -416,6 +427,96 @@ class MEMM():
         df = pd.DataFrame(tag_pred_dict)
         df.to_csv('Comfusion_Matrix.csv')
 
+
+    def get_probability_from_feature_to_all_states(
+            self,
+            feature_list):
+
+        denominator = 0.0
+        probability_for_all_tags = {}
+        for inner_state in self.all_tags:
+            exp_sum = 0.0
+            for inner_feature in feature_list:
+                exp_sum += self.learned_weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
+            denominator += exp(exp_sum)
+            probability_for_all_tags[inner_state] = exp(exp_sum)
+        if denominator == 0:
+            # in case no known features
+            for inner_state in self.all_tags:
+                probability_for_all_tags[inner_state] = 1/float(len(self.all_tags))
+        else:
+            for inner_state in self.all_tags:
+                probability_for_all_tags[inner_state] = probability_for_all_tags[inner_state]/denominator
+
+        return probability_for_all_tags
+
+    def viterbi_for_memm2(
+            self,
+            features_list,
+            word_list,
+            states,
+            feature_obj):
+        V = [{}]
+
+        path = {}
+        init_history_words = ['*', '*']
+
+        curr_obs = feature_obj.set_features_for_word(
+                words=init_history_words + [word_list[0]],
+                next_word=word_list[1],
+                tags=init_history_words)
+        proba_dict = self.get_probability_from_feature_to_all_states(curr_obs)
+        for y in states:
+            curr_prob = curr_prob * proba_dict[y]
+            V[0][y]   = curr_prob
+            path[y]   = [y]
+
+        print('Viterbi Number Of Obs:' + str(len(features_list)))
+        verge_factor = 10 ** (-100)
+        adjust_factor = 10 ** 99
+
+        for t in range(1, len(features_list)):
+            if t % 2 == 0:
+                if all([val < verge_factor for val in V[t - 1].values()]):
+                    # for probability not run to zero
+                    print('Making Probability Adjust')
+                    for y0 in states:
+                        V[t - 1][y0] = V[t - 1][y0] * adjust_factor
+            V.append({})
+            new_path = {}
+            curr_obs = features_list[t]
+            if t == 1:
+                hist_index = 1
+            else:
+                hist_index = 0
+            for y in states:
+                max_prob = - 1
+                former_state = None
+                for y0 in states:
+                    curr_prob = V[t - 1][y0]
+                    curr_obs = feature_obj.set_features_for_word(
+                        words=['*'] * hist_index + word_list[t - (2 - hist_index):t + 1],
+                        next_word=word_list[t + 1],
+                        tags=['*'] * hist_index + path[y0][(-2 + hist_index):])
+                    proba_dict = self.get_probability_from_feature_to_all_states(curr_obs)
+                    curr_prob = curr_prob * proba_dict[y]
+
+                    if curr_prob > max_prob:
+                        max_prob = curr_prob
+                        former_state = y0
+                V[t][y] = max_prob
+                new_path[y] = path[former_state] + [y]
+
+            path = new_path
+
+        prob = -1
+        for y in states:
+            cur_prob = V[len(features_list) - 1][y]
+            if cur_prob > prob:
+                prob = cur_prob
+                state = y
+
+        return prob, path[state]
 
 if __name__ == '__main__':
     model = MEMM()
