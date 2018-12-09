@@ -324,7 +324,7 @@ class MEMM():
 
         print('Finished Optimization Step Loss: [' + str((-1)*loss) + "] Gradient Vec Size:"
               + str(np.sum(np.square(all_partial_deteratives))) )
-        if abs(self.curr_loss - (-1)*loss) < 0.5:
+        if abs(self.curr_loss - (-1)*loss) < 50000:
             print('Here...')
             self.learned_weights = weights
             raise Exception('Shitty Func')
@@ -441,7 +441,8 @@ class MEMM():
         for inner_state in self.all_tags:
             exp_sum = 0.0
             for inner_feature in feature_list:
-                exp_sum += self.learned_weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
+                if inner_feature in self.state_feature_to_index_dict[inner_state]:
+                    exp_sum += self.learned_weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
             denominator += exp(exp_sum)
             probability_for_all_tags[inner_state] = exp(exp_sum)
         if denominator == 0:
