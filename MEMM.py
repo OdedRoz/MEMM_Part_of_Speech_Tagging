@@ -225,8 +225,8 @@ class MEMM():
             optimal_params = fmin_l_bfgs_b(func=self.loss_func_and_gradient, x0=self.state_feature_weight_arr)
             if optimal_params[2]['warnflag']:
                 print('Error in training:\n{}\\n'.format(optimal_params[2]['task']))
-            res_weights = optimal_params[0]
-            self.learned_weights = res_weights
+            # res_weights = optimal_params[0]
+            # self.learned_weights = res_weights
         except Exception as e:
             pass
 
@@ -471,7 +471,7 @@ class MEMM():
                 tags=init_history_words)
         proba_dict = self.get_probability_from_feature_to_all_states(curr_obs)
         for y in states:
-            curr_prob = curr_prob * proba_dict[y]
+            curr_prob =  proba_dict[y]
             V[0][y]   = curr_prob
             path[y]   = [y]
 
