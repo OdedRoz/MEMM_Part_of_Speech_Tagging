@@ -221,19 +221,21 @@ class MEMM():
         self.state_feature_weight_arr = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
         self.train_features = train_features
         self.curr_loss = 9999999
-        optimal_params = fmin_l_bfgs_b(func=self.loss_func_and_gradient, x0=self.state_feature_weight_arr)
+        try:
+            optimal_params = fmin_l_bfgs_b(func=self.loss_func_and_gradient, x0=self.state_feature_weight_arr)
+            if optimal_params[2]['warnflag']:
+                print('Error in training:\n{}\\n'.format(optimal_params[2]['task']))
+            res_weights = optimal_params[0]
+            self.learned_weights = res_weights
+        except Exception as e:
+            pass
 
-        if optimal_params[2]['warnflag']:
-            print('Error in training:\n{}\\n'.format(optimal_params[2]['task']))
-
-        res_weights = optimal_params[0]
-        self.learned_weights = res_weights
         state_feature_weight_dict = {}
         # init all weights to 0
         for state in all_tags:
             state_feature_weight_dict[state] = {}
             for obs in all_features:
-                state_feature_weight_dict[state][obs] = res_weights[self.state_feature_to_index_dict[state][obs]]
+                state_feature_weight_dict[state][obs] = self.learned_weights[self.state_feature_to_index_dict[state][obs]]
 
         return state_feature_weight_dict
 
@@ -324,6 +326,8 @@ class MEMM():
               + str(np.sum(np.square(all_partial_deteratives))) )
         if abs(self.curr_loss - (-1)*loss) < 0.5:
             print('Here...')
+            self.learned_weights = weights
+            raise Exception('Shitty Func')
             all_partial_deteratives = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
 
         self.curr_loss = (-1)*loss
