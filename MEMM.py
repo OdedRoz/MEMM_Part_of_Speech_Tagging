@@ -1,13 +1,14 @@
 
 import os
 import time
+import pickle
+import random
 from math import exp
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
 from scipy import sparse
 import scipy as sp
 from load_corpus2 import load_data_and_create_features
-from Viterbi import Viterbi
 
 
 ###################################
@@ -19,50 +20,75 @@ class MEMM():
     def __init__(
             self,
             train_filename = "train.wtag",
-            test_filename  = "test.wtag"):
+            reg_factor     = 0.6,
+            boost          = False):
 
         # init params
-        self.number_of_gradient_decent_steps = 3
-        self.regularization_factor           = 0.1
-        self.learning_rate                   = 0.001
-        self.viterbi_method                  = 2
-        # load train in requested format
+        self.regularization_factor           = reg_factor
+        # if feature appeared less time then this number it will be removed
+        self.minimal_num_of_obs_for_feat     = 1
+        # load train in workable format
         train_words, train_tags, train_features, feat_obj = load_data_and_create_features(
                 os.path.join('data', train_filename))
+        # save feature object as self object
+        self.features_obj = feat_obj
+        if boost == True:
+            # booting the train set
+            boost_words = []
+            boost_tags = []
+            boost_features = []
+            for j in range(50000):
+                i = random.randrange(len(train_words))
+                boost_words.append(train_words[i])
+                boost_tags.append(train_tags[i])
+                boost_features.append(train_features[i])
+            train_words = train_words + boost_words
+            train_tags = train_tags + boost_tags
+            train_features = train_features + boost_features
 
-        test_words, test_tags, test_features, feat_obj_none = load_data_and_create_features(
-                os.path.join('data', test_filename), dataset = 'Test', Features_Object = feat_obj)
-
+        # train model
         self.train_model(
-                train_words,
-                train_tags,
-                train_features)
-        self.state_feature_probability_dict = None
+            train_words,
+            train_tags,
+            train_features)
 
+
+    def test_model(
+            self,
+            test_filename="test.wtag"):
+
+        t_start = time.time()
+        # load labeled test file
+        test_words, test_tags, test_features, feat_obj_none = load_data_and_create_features(
+            os.path.join('data', test_filename), dataset='Test', Features_Object=self.features_obj)
+        # create predicted tags
         output_words, output_pred, actual_tags = self.test_dataset(
-                test_words=test_words,
-                test_features=test_features,
-                test_tags=test_tags,
-                all_states=self.all_tags,
-                probabilities_dict=self.state_feature_probability_dict,
-                smoothing_factor=1/float(len(self.all_tags)),
-                feature_obj=feat_obj)
+            test_words=test_words,
+            test_features=test_features,
+            test_tags=test_tags,
+            all_states=self.all_tags,
+            feature_obj=self.features_obj)
 
+        print('Total Test Time: ' + str(time.time() - t_start) + ' Seconds')
         total = 0.0
         correct = 0.0
-
+        # check acurracy
         for i in range(len(output_pred)):
+            if actual_tags[i] == 'STOP':
+                continue
             total += 1
             if output_pred[i] == actual_tags[i]:
                 correct += 1
+            # else:
+            #     print('Mistake at ' + output_words[i] + ' Predicted ' + str(output_pred[i]) + ' Actual ' + str(actual_tags[i]))
 
-        print('Total / correct: [' + str(total)+ ' : ' + str(correct) + ']')
-        print("Acuuracy : " + str(correct/total))
+        print('Total / correct: [' + str(total) + ' : ' + str(correct) + ']')
+        print("Acurracy : " + str(correct / total))
 
         self.create_comfusion_matrix(
-                all_tags=self.all_tags,
-                pred_tags=output_pred,
-                actual_tags=actual_tags)
+            all_tags=self.all_tags,
+            pred_tags=output_pred,
+            actual_tags=actual_tags)
 
     def train_model(
             self,
@@ -77,14 +103,16 @@ class MEMM():
         feature_to_all_its_obs_dict = {}
         all_features = []
         all_tags = list(set(train_tags))
+        # remove unwanted tags
         all_tags.remove('*')
         all_tags.remove('STOP')
+        # init empiric count dict
         for temp_tag in all_tags:
             state_features_occurrences[temp_tag] = {}
 
         # iterate all words and create empirical counts
         for i in range(len(train_words)):
-            curr_word    = train_words[i] # not needed
+            curr_word    = train_words[i]
             curr_tag     = train_tags[i]
             curr_features= tuple(train_features[i])
             train_features[i] = tuple(train_features[i])
@@ -107,8 +135,12 @@ class MEMM():
                     feature_count_dict[curr_feat] += 1
                     feature_to_all_its_obs_dict[curr_feat].append((curr_features, curr_tag))
 
-        # adds to every state zero counts for features that didn't appear with it
+        # remove features that didn't appear enough
         all_features = list(set(all_features))
+        for feature in feature_count_dict:
+            if feature_count_dict[feature] < self.minimal_num_of_obs_for_feat:
+                all_features.remove(feature)
+        # add empiric count as zero for features that haven't appeared with certain tag
         for state in state_features_occurrences:
             for feature in all_features:
                 if feature not in state_features_occurrences[state]:
@@ -118,35 +150,43 @@ class MEMM():
         self.create_feature_index_to_state_feature_mapping(all_tags, all_features)
         # create empiric counts vector
         self.empiric_counts_vec = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
+        print('Total Amount Of Features :' + str(len(self.empiric_counts_vec)))
         for state in self.state_feature_to_index_dict:
             for feat in self.state_feature_to_index_dict[state]:
                 self.empiric_counts_vec[self.state_feature_to_index_dict[state][feat]] = state_features_occurrences[state][feat]
 
         print('Finished empiric counts...')
         number_of_taggs = len(all_tags)
+        # rows of actual observations
         self.row_index_to_remeber = []
 
+        # parameters to init feature matrix
         row_indexes = []
         col_indexes  = []
         data = []
-
+        # parameters to init help matrix
         help_row_indexes = []
         help_col_indexes = []
         help_data = []
-
+        # iterate observations and init both matrixes
         row_counter = 0
         for i in range(len(train_words)):
             curr_tag = train_tags[i]
             curr_features = train_features[i]
             for tag in all_tags:
+                removed_features_num = 0
                 for inner_feature in curr_features:
-                    row_indexes.append(row_counter)
-                    col_indexes.append(self.state_feature_to_index_dict[tag][inner_feature])
+                    try:
+                        col_indexes.append(self.state_feature_to_index_dict[tag][inner_feature])
+                        row_indexes.append(row_counter)
+                    except Exception as e:
+                        # if feature was removed
+                        removed_features_num += 1
 
-                data.extend([1]*len(curr_features))
+                data.extend([1]*(len(curr_features) - removed_features_num))
                 if curr_tag == tag:
+                    # remember actual observations
                     self.row_index_to_remeber.append(row_counter)
-
 
                 row_counter += 1
 
@@ -155,30 +195,34 @@ class MEMM():
             help_data.extend([1]*number_of_taggs)
 
         print('Finished matrix data')
+        # create the sparse matrixes
         self.feature_matrix = sparse.csr_matrix((np.array(data),(np.array(row_indexes),np.array(col_indexes))),
                                            shape=(row_counter,len(self.index_to_state_feature_list)))
         self.help_matrix = sparse.csr_matrix((np.array(help_data),(np.array(help_row_indexes),np.array(help_col_indexes))),
                                            shape=(i+1,row_counter))
         print('Finished matrix build')
+        # feature weights array
         self.state_feature_weight_arr = sp.zeros([len(self.index_to_state_feature_list),1])
+        # learn wieghts
         optimal_params = fmin_l_bfgs_b(
                 func=self.loss_func_and_gradient,
                 x0=self.state_feature_weight_arr,
-                maxiter=250)
+                maxiter=260)
         print ('Finished weights calc')
         if optimal_params[2]['warnflag']:
             print('Error in training:\n{}\\n'.format(optimal_params[2]['task']))
 
         res_weights = np.array(optimal_params[0])
+        # save weights in self
         self.learned_weights = res_weights
 
         state_feature_weight_dict = {}
-        # init all weights to 0
+        # save wieghts also in dict
         for state in all_tags:
             state_feature_weight_dict[state] = {}
             for obs in all_features:
                 state_feature_weight_dict[state][obs] = self.learned_weights[self.state_feature_to_index_dict[state][obs]]
-
+        # save all possible tags in self
         self.all_tags = all_tags
         print('Finished trainig in ' + str(time.time() - train_start_time) + " Scondes" )
 
@@ -186,105 +230,29 @@ class MEMM():
     def loss_func_and_gradient(
             self,
             weights):
-
+        # calc loss func an all gradients
         print ("Min Weigth: " + str(np.amin(weights))
               + ' Max Weight: ' + str(np.amax(weights)) + " Weight size: " + str(np.sum(np.square(weights))) )
-
+        # calc for each observation its denominators (for all together)
         all_denominators =  self.help_matrix*np.exp(self.feature_matrix*weights)
+        # format each denominator to its row in the observations
         all_denominators_formated =  (self.help_matrix.transpose())*all_denominators
-
+        # calc for each observation its numerator
         all_numerators = np.exp(self.feature_matrix*weights)
+        # calc all p(Y |X,W)
         all_probabilities = all_numerators/all_denominators_formated
-
+        # calc all prtial deteratives
         all_partial_deteratives = self.empiric_counts_vec - (self.feature_matrix.transpose()*all_probabilities).T
         all_partial_deteratives -= self.regularization_factor*weights.T
-
+        # calc optimization loss
         empiric_loss  = np.sum(self.feature_matrix[self.row_index_to_remeber,:]*weights)
         expected_loss = np.sum(np.log(all_denominators))
 
         loss = empiric_loss - expected_loss - self.regularization_factor*(np.sum(np.square(weights)))
 
-
-
-        # # init empirical counts
-        # all_empirical_counts    = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
-        # # init partial deteratives
-        # all_partial_deteratives = np.zeros(len(self.index_to_state_feature_list), dtype=np.float64)
-        #
-        # weight_sum_for_all_obs = {}
-        # for feature_list in self.train_features:
-        #     if feature_list not in weight_sum_for_all_obs:
-        #         weight_sum_for_all_obs[feature_list] = {}
-        #         for inner_state in self.all_tags:
-        #             exp_sum = 0.0
-        #             for inner_feature in feature_list:
-        #                 exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
-        #             weight_sum_for_all_obs[feature_list][inner_state] = exp_sum
-        #
-        # print ("Calculated help dict")
-        # for feature_indx in range(len(self.index_to_state_feature_list)):
-        #     curr_state_feature = self.index_to_state_feature_list[feature_indx]
-        #     curr_state   = curr_state_feature[0]
-        #     curr_feature = curr_state_feature[1]
-        #     curr_weight  = weights[feature_indx]
-        #     curr_empirical_count = self.state_features_occurrences[curr_state][curr_feature]
-        #
-        #     all_empirical_counts[feature_indx] = curr_empirical_count
-        #
-        #     expected_count = 0.0
-        #     # if self.optimize_method == 1:
-        #     #     for obs in self.feature_to_all_its_obs_dict[curr_feature]:
-        #     #         numerator = 0.0
-        #     #         denominator = 0.0
-        #     #         for inner_state in self.all_tags:
-        #     #             exp_sum = weight_sum_for_all_obs[obs[0]][inner_state]
-        #     #             denominator += exp(exp_sum)
-        #     #             if inner_state == obs[1]:
-        #     #                 numerator = exp(exp_sum)
-        #     #         if numerator == 0.0:
-        #     #             print("Not supposed to get here (numerator == 0)")
-        #     #         expected_count += float(numerator) / denominator
-        #
-        #     for obs in self.feature_to_all_its_obs_dict[curr_feature]:
-        #         if obs[1] == curr_state:
-        #             numerator = 0.0
-        #             denominator = 0.0
-        #             for inner_state in self.all_tags:
-        #                 exp_sum = weight_sum_for_all_obs[obs[0]][inner_state]
-        #                 # exp_sum = 0.0
-        #                 # for inner_feature in obs[0]:
-        #                 #     exp_sum += weights[self.state_feature_to_index_dict[inner_state][inner_feature]]
-        #                 denominator += exp(exp_sum)
-        #                 if inner_state == curr_state:
-        #                     numerator = exp(exp_sum)
-        #             if numerator == 0.0:
-        #                 print ("Not supposed to get here (numerator == 0)")
-        #             expected_count += float(numerator)/denominator
-        #
-        #     # the last part of the formula is to avoid overfitting
-        #     curr_partial_derivative = float(curr_empirical_count) - expected_count - curr_weight*(
-        #         self.regularization_factor)
-        #
-        #     all_partial_deteratives[feature_indx] = curr_partial_derivative
-        #
-        # expected_loss = 0.0
-        # print('Optimization Step Calculation Expected Loss')
-        # for feature_list in self.train_features:
-        #     curr_exp_loss = 0.0
-        #     for state in self.all_tags:
-        #         curr_state_wieghts_sum = weight_sum_for_all_obs[feature_list][state]
-        #         # curr_state_wieghts_sum = 0.0
-        #         # for feature in feature_list:
-        #         #     curr_state_wieghts_sum += weights[self.state_feature_to_index_dict[state][feature]]
-        #         curr_exp_loss += exp(curr_state_wieghts_sum)
-        #     # curr_exp_loss *= (self.all_features_len - len(feature_list))*exp(0)*len(self.all_tags)
-        #     expected_loss += np.log(curr_exp_loss)
-        #
-        # regularization_loss = (np.sum(np.square(weights)) * self.regularization_factor / 2)
-        # loss = np.sum(weights * all_empirical_counts) - expected_loss - regularization_loss
-        #
         print('Finished Optimization Step Loss: [' + str((-1)*loss) + "] Gradient Vec Size:"
               + str(np.sum(np.square(all_partial_deteratives))) )
+        # return gradient and loss in a way max will be calculated
         return ((-1)*loss), (-1)*all_partial_deteratives
 
     def create_feature_index_to_state_feature_mapping(
@@ -313,8 +281,6 @@ class MEMM():
             test_words,
             test_features,
             all_states,
-            probabilities_dict,
-            smoothing_factor,
             test_tags = None,
             feature_obj = None):
 
@@ -331,21 +297,16 @@ class MEMM():
         temp_featrues   = []
         for i in range(len(test_words)):
             if test_words[i] == 'STOP':
-                if self.viterbi_method == 1:
-                    vt_res = Viterbi.viterbi_for_memm(features_list=tuple(temp_featrues),
-                                                      word_list=temp_words + ['STOP'],
-                                                      states=tuple(all_states),
-                                                      train_probabilities=probabilities_dict,
-                                                      smoothing_factor=smoothing_factor,
-                                                      feature_obj=feature_obj)
-                else:
-                    vt_res = self.viterbi_for_memm2(features_list=tuple(temp_featrues),
-                                                    word_list=temp_words + ['STOP'],
-                                                    states=tuple(all_states),
-                                                    feature_obj=feature_obj)
 
-                output_words.extend(temp_words)
-                output_pred.extend(vt_res[1])
+                vt_res = self.viterbi_for_memm(features_list=tuple(temp_featrues),
+                                                word_list=temp_words + ['STOP'],
+                                                states=tuple(all_states),
+                                                feature_obj=feature_obj)
+
+                output_words.extend(temp_words + ['STOP'])
+                output_pred.extend(vt_res[1]+ ['STOP'])
+                if test_tags is not None:
+                    actual_tags.append('STOP')
                 num_of_processed_sent += 1
                 print(
                     'Sentence Processed :' + str(num_of_processed_sent) + ' , Viterbi Probabilities: ' + str(vt_res[0]))
@@ -378,18 +339,22 @@ class MEMM():
                 tag_pred_dict[outer_tag][inner_tag] = 0
 
         for i in range(len(pred_tags)):
-            tag_pred_dict[actual_tags[i]][pred_tags[i]] += 1
-
-        import pandas as pd
-        # print (tag_pred_dict)
-        df = pd.DataFrame(tag_pred_dict)
-        df.to_csv('Comfusion_Matrix.csv')
+            if pred_tags[i] != 'STOP':
+                tag_pred_dict[actual_tags[i]][pred_tags[i]] += 1
+        #
+        # import pandas as pd
+        # # print (tag_pred_dict)
+        # df = pd.DataFrame(tag_pred_dict)
+        # df.to_csv('Comfusion_Matrix.csv')
 
 
     def get_probability_from_feature_to_all_states(
             self,
             feature_list):
-
+        """
+        :param feature_list: list of features of an observation
+        :return:
+        """
         denominator = 0.0
         probability_for_all_tags = {}
         for inner_state in self.all_tags:
@@ -409,7 +374,7 @@ class MEMM():
 
         return probability_for_all_tags
 
-    def viterbi_for_memm2(
+    def viterbi_for_memm(
             self,
             features_list,
             word_list,
@@ -443,21 +408,26 @@ class MEMM():
                         V[t - 1][y0] = V[t - 1][y0] * adjust_factor
             V.append({})
             new_path = {}
-            curr_obs = features_list[t]
+            # curr_obs = features_list[t]
             if t == 1:
                 hist_index = 1
             else:
                 hist_index = 0
+            obs_dict = {}
+            all_proba_dict_dict = {}
+            for y0 in states:
+                obs_dict[y0] = feature_obj.set_features_for_word(
+                        words=['*'] * hist_index + word_list[t - (2 - hist_index):t + 1],
+                        next_word=word_list[t + 1],
+                        tags=['*'] * hist_index + path[y0][(-2 + hist_index):])
+                all_proba_dict_dict[y0] = self.get_probability_from_feature_to_all_states(obs_dict[y0])
             for y in states:
                 max_prob = - 1
                 former_state = None
                 for y0 in states:
                     curr_prob = V[t - 1][y0]
-                    curr_obs = feature_obj.set_features_for_word(
-                        words=['*'] * hist_index + word_list[t - (2 - hist_index):t + 1],
-                        next_word=word_list[t + 1],
-                        tags=['*'] * hist_index + path[y0][(-2 + hist_index):])
-                    proba_dict = self.get_probability_from_feature_to_all_states(curr_obs)
+                    # curr_obs = obs_dict[y0]
+                    proba_dict = all_proba_dict_dict[y0]
                     curr_prob = curr_prob * proba_dict[y]
 
                     if curr_prob > max_prob:
@@ -477,5 +447,61 @@ class MEMM():
 
         return prob, path[state]
 
+    def build_output_comp_file(
+            self,
+            words,
+            labels,
+            comp_num):
+
+        output_str = ""
+        new_row = True
+        for i in range(len(words)):
+            if words[i] == 'STOP':
+                if i != (len(words) - 1):
+                    output_str += '\n'
+                new_row = True
+            else:
+                if new_row == True:
+                    output_str += words[i] + '_' + labels[i]
+                    new_row = False
+                else:
+                    output_str += ' ' + words[i] + '_' + labels[i]
+
+        with open("comp_m" + str(comp_num) + "_302557541.wtag", "w") as f:
+            f.write(output_str)
+
+    def create_competition_file(
+            self,
+            comp_filename = 'comp.words'):
+
+        t_start = time.time()
+        # load labeled test file
+        test_words, test_tags, test_features, feat_obj_none = load_data_and_create_features(
+            os.path.join('data', comp_filename), dataset='Test', Features_Object=self.features_obj, comp_file = True)
+        # create predicted tags
+        output_words, output_pred, actual_tags = self.test_dataset(
+            test_words=test_words,
+            test_features=test_features,
+            test_tags=test_tags,
+            all_states=self.all_tags,
+            feature_obj=self.features_obj)
+        if '2' in comp_filename:
+            comp_num = 2
+        else:
+            comp_num = 1
+
+        self.build_output_comp_file(
+            output_words,
+            output_pred,
+            comp_num)
+
 if __name__ == '__main__':
-    model = MEMM()
+    model = MEMM(train_filename='train2.wtag',
+                 reg_factor=0.1,
+                 boost=True)
+    with open('model_2.pkl', 'wb') as output:
+        pickle.dump(model, output, pickle.HIGHEST_PROTOCOL)
+    with open('model_2.pkl', 'rb') as input:
+        model = pickle.load(input)
+    model.test_model()
+    model.create_competition_file(comp_filename='comp2.words')

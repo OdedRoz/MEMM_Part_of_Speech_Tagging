@@ -1,15 +1,16 @@
 from Features2 import Features2
 
-def load_data_and_create_features(path, dataset='Train', Features_Object = None):
+def load_data_and_create_features(path, dataset='Train', Features_Object = None, comp_file = False):
     with open(path) as f:
         content = f.readlines()
     content = [x.strip() for x in content]
-    words_set, tags_set = get_words_and_tags_set(content)
+    if dataset=='Train':
+        words_set, tags_set = get_words_and_tags_set(content)
     if dataset=='Train':
         features_object = Features2(words_set,tags_set)
     elif dataset=='Test':
         features_object = Features_Object
-    word_possible_labels = {}
+
     words = []
     tags = []
     features = []
@@ -21,15 +22,20 @@ def load_data_and_create_features(path, dataset='Train', Features_Object = None)
         features.extend([[],[]])
         splited_line = line.split()
         for i,word_tag in enumerate(splited_line):
-            word, tag = word_tag.split('_')
-            words.append(word)
-            tags.append(tag)
-            try:
-                next_word, _ = splited_line[i+1].split('_')
-            except IndexError:
-                next_word = 'STOP'
-            current_word_features = features_object.set_features_for_word(words[-3:],tags[-3:-1],next_word)
-            features.append(current_word_features)
+            if comp_file == True:
+                features.append([])
+                words.append(word_tag)
+                tags.append('')
+            else:
+                word, tag = word_tag.split('_')
+                words.append(word)
+                tags.append(tag)
+                try:
+                    next_word, _ = splited_line[i+1].split('_')
+                except IndexError:
+                    next_word = 'STOP'
+                current_word_features = features_object.set_features_for_word(words[-3:],tags[-3:-1],next_word)
+                features.append(current_word_features)
             #test
             #features_object.multiply_features_with_weighets(features[-1])
             #if word exists append tag to wotds list, else create a list and append the tag

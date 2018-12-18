@@ -23,6 +23,11 @@ class Features2:
         #next word
         self.f107 = self.words_set
         self.f107_dict = self.create_features_dict(self.f107)
+        # word form: X for capitalized Xx for mixed d for digit and etc
+        self.f_capital = self.craete_word_forms()
+        self.f_capital_dict = self.create_features_dict(self.f_capital)
+        self.f_pre_w_and_tag = self.create_word_tag_set()
+        self.f_pre_w_and_tag_dict = self.create_features_dict(self.f_pre_w_and_tag)
         self.all_features_dicts = [self.f100_dict,
                                    self.f101_dict,
                                    self.f102_dict,
@@ -30,10 +35,13 @@ class Features2:
                                    self.f104_dict,
                                    self.f105_dict,
                                    self.f106_dict,
-                                   self.f107_dict,]
+                                   self.f107_dict,
+                                   self.f_capital_dict,
+                                   self.f_pre_w_and_tag_dict]
         self.features_dicts_sizes = self.get_features_dicts_sizes()
+        print(self.features_dicts_sizes)
         self.features_size = self.get_features_size()
-        self.weights = np.zeros(self.features_size)
+        # self.weights = np.zeros(self.features_size)
         #self.features_to_weighet_dict = self.create_features_to_weighet_dict()
 
     def multiply_features_with_weighets(self,features):
@@ -52,7 +60,9 @@ class Features2:
                 'f104': len(self.f104_dict),
                 'f105': len(self.f105_dict),
                 'f106': len(self.f106_dict),
-                'f107': len(self.f107_dict)}
+                'f107': len(self.f107_dict),
+                'f_capital' : len(self.f_capital_dict),
+                'f_pre_w_and_tag' :len(self.f_pre_w_and_tag_dict)}
 
 
     def features_to_weighets_index(self,word_dicts_of_features):
@@ -90,7 +100,7 @@ class Features2:
             f100 = [self.f100_dict[word]]
         except:
             if print_OOV:
-                print(f'({word}) OOV for f100')
+                print('({word}) OOV for f100')
             f100 = list()
         sufpresize = [1,2,3,4]
         f101 = list()
@@ -101,23 +111,23 @@ class Features2:
                     f101.append(self.f101_dict[word[-size:]])
                 except:
                     if print_OOV:
-                        print(f'({word[-size:]} OOV for f101')
+                        print('({word[-size:]} OOV for f101')
                 try:
                     f102.append(self.f102_dict[word[:size]])
                 except:
                     if print_OOV:
-                        print(f'({word[:size]}) OOV for f102')
+                        print('({word[:size]}) OOV for f102')
         try:
             f103 = [self.f103_dict[(tags[0],tags[1])]]
         except:
             if print_OOV:
-                print(f'{tags[0]},{tags[1]} OOV for f103')
+                print('{tags[0]},{tags[1]} OOV for f103')
             f103 = list()
         try:
             f104 = [self.f104_dict[tags[1]]]
         except:
             if print_OOV:
-                print(f'{tags[1]} OOV for f104')
+                print('{tags[1]} OOV for f104')
             f104 = list()
         try:
             f105 = [self.f105_dict['current_word_tag']]
@@ -129,14 +139,26 @@ class Features2:
             f106 = [self.f106_dict[words[1]]]
         except:
             if print_OOV:
-                print(f'{words[1]} OOV for f106')
+                print('{words[1]} OOV for f106')
             f106 = list()
         try:
             f107 = [self.f107_dict[next_word]]
         except:
             if print_OOV:
-                print(f'({next_word}) OOV for f107')
+                print('({next_word}) OOV for f107')
             f107 = list()
+        try:
+            if words[-2] == '*' or words[-2] == '.':
+                f_capitalized = [self.f_capital_dict[self.get_word_form(word, is_first=True)]]
+            else:
+                f_capitalized = [self.f_capital_dict[self.get_word_form(word, is_first=False)]]
+        except:
+            f_capitalized = list()
+        try:
+            prev_word_and_tag = list()
+            # prev_word_and_tag = [self.f_pre_w_and_tag_dict[(word[-1],tags[1])]]
+        except:
+            prev_word_and_tag = list()
 
         dict_of_features =  {'f100': f100,
                              'f101': f101,
@@ -145,7 +167,9 @@ class Features2:
                              'f104': f104,
                              'f105': f105,
                              'f106': f106,
-                             'f107': f107}
+                             'f107': f107,
+                             'f_capital' : f_capitalized,
+                             'f_pre_w_and_tag' : prev_word_and_tag}
         features = self.features_to_weighets_index(dict_of_features)
         return features
 
@@ -199,6 +223,38 @@ class Features2:
         return two_tags
 
 
+    def craete_word_forms(self):
+        word_forms = set()
+        for word in self.words_set:
+            # add every word form one time as first in the sentance and one time not
+            temp_word_form = self.get_word_form(word, is_first=True)
+            word_forms.add(temp_word_form)
+            temp_word_form = self.get_word_form(word, is_first=False)
+            word_forms.add(temp_word_form)
+        return word_forms
 
+    def get_word_form(self, word, is_first):
+        temp_word_form = ''
+        temp_word_len = 0
+        for char in word:
+            if char.isupper():
+                if temp_word_form[-1:] != 'X':
+                    temp_word_form += 'X'
+            elif char.islower():
+                if temp_word_form[-1:] != 'x':
+                    temp_word_form += 'x'
+            elif char.isdigit():
+                if temp_word_form[-1:] != 'd':
+                    temp_word_form += 'd'
+            else:
+                if temp_word_form[-1:] != char:
+                    temp_word_form += char
+            temp_word_len += 1
+        return (temp_word_form, is_first)
 
-
+    def create_word_tag_set(self):
+        word_tag_list = []
+        for word in self.words_set:
+            for tag in self.tags_set:
+                word_tag_list.append((word[-1], tag))
+        return set(word_tag_list)
